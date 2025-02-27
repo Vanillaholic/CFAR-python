@@ -34,6 +34,32 @@ def awgn(x, snr, out='signal', method='vectorized', axis=0):
         return x + n
     
 
+def aexpn(signal, snr):
+    """
+    给信号添加指数噪声。
+    
+    参数:
+    - signal: 输入的信号（例如 Rx）
+    - SNR_dB: 目标信噪比（以分贝为单位）
+    
+    返回:
+    - 含噪声的信号
+    """
+    SNR_linear = 10 ** (snr/ 10)
+    # 计算信号功率
+    Ps = np.mean(signal**2)
+    N = len(signal)
+    
+    # 生成指数噪声
+    noise_exp = np.random.exponential(scale=1, size=N)
+    noise_power = np.mean(noise_exp**2)
+    
+    # 计算噪声尺度因子
+    scale_factor = np.sqrt(Ps / (SNR_linear * noise_power))
+    
+    # 返回添加噪声后的信号
+    return signal + scale_factor * noise_exp
+
 
 if __name__ == "__main__":
     print('test')

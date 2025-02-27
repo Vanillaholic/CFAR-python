@@ -147,7 +147,6 @@ if __name__ == '__main__':
 
     from scipy.signal import convolve
 
-    #t = np.linspace(0, duration, int(duration * fs), endpoint=False)
 
     #TODO: 两次卷积计算回波信号
     s = convolve( ir, Tx_paddle,mode='full')
@@ -159,10 +158,8 @@ if __name__ == '__main__':
     Rx = Rx[0:len(Tx_paddle)]
 
     #绘制
-    #t = np.linspace(0,TIME+num_chirp*duration, len(Rx))
     plt.figure()
     plt.title('received signal')
-    #t_rx = np.linspace(0, len(Rx) / fs, len(Rx))  # 为接收信号生成时间向量
     plt.plot(t, Rx)
     plt.grid(True)
 
