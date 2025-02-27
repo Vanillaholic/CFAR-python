@@ -167,7 +167,7 @@ if __name__ == '__main__':
     from noise import awgn
     Rx_noisy = awgn(Rx, snr=10, out='signal', method='vectorized', axis=0)
 
-    #TODO: 经过带通滤波器 和 匹配滤波器
+    #TODO: 经过带通滤波器 , 匹配滤波器 再包络检波
     from scipy import signal  
     # 带通滤波器： 1350-1650Hz
     fmax = fs/2
@@ -178,28 +178,44 @@ if __name__ == '__main__':
     # 匹配滤波：将输入信号与参考信号的时间反转版本进行卷积
     matched_out = signal.fftconvolve(BPF_out, template[::-1], mode='same')
 
-    #绘制带通滤波后的信号波形
+    # 包络检波: python中的hilbert是直接生成解析信号,不是hilbert变换 
+    analytic = signal.hilbert(np.real(matched_out), N=None, axis=-1)
+    envelope = np.abs(analytic)
+    
+    #绘制信号波形
     plt.figure(figsize=(10, 6))
 
-    # 上子图：带通滤波信号
-    plt.subplot(2, 1, 1)
+    # 带通滤波信号
+    plt.subplot(3, 1, 1)
     plt.plot(t, BPF_out);
     plt.title('Bandpass Output');plt.grid(True)
-    # 下子图：匹配滤波信号
-    plt.subplot(2, 1, 2)
+    # 匹配滤波信号
+    plt.subplot(3, 1, 2)
     plt.plot(t, matched_out)
     plt.xlabel('Time (s)');plt.title('Matched Output')
+    plt.grid(True)
+    #包络检波后的信号
+    plt.subplot(3, 1, 3)
+    plt.plot(t, envelope)
+    plt.xlabel('Time (s)');plt.title('Envelope')
     plt.grid(True)
     plt.tight_layout()
 
     #TODO: 回波信号进行1D-CA-CFAR
-    cfar_mask = ca_cfar_1d(matched_out, guard_cells=30, train_cells=300, alpha=2.5)
+
+    guard_len ,train_len = 30,300  #设置守护单元和训练单元的长度
+    alpha = 2.5                    #设置门限因子  
+    N = guard_len+train_len    
+    P_f = 1/((1 + alpha/N)**N)     # 计算设置的虚警概率
+    
+    cfar_mask = ca_cfar_1d(envelope, guard_cells=guard_len, train_cells=train_len, alpha=alpha)
+
     detected_indices = np.where(cfar_mask == 1)[0]
 
     # 绘制回波信号和检测结果
     plt.figure(figsize=(12, 6))
-    plt.plot(t, np.abs(Rx_noisy), label='Received Signal')
-    plt.plot(t[detected_indices], np.abs(Rx_noisy[detected_indices]), 'rx', label='CFAR Detections')
+    plt.plot(t, envelope, label='Received Signal')
+    plt.plot(t[detected_indices], np.abs(envelope[detected_indices]), 'rx', label='CFAR Detections')
     plt.title('CFAR Detection Results')
     plt.xlabel('Time (s)')
     plt.ylabel('Amplitude')
