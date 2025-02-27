@@ -35,30 +35,32 @@ class BellhopSimulation:
         Initializes the BellhopSimulation class with default parameters.
         """
         ssp = [
-            [ 0, 1540],  # 1540 m/s at the surface
-            [10, 1530],  # 1530 m/s at 10 m depth
-            [20, 1532],  # 1532 m/s at 20 m depth
-            [25, 1533],  # 1533 m/s at 25 m depth
-            [30, 1535]   # 1535 m/s at the seabed
+        [  0.0 , 1548.52],[200.0 , 1530.29],[400.0 , 1517.78],[600.0 , 1509.49 ],  
+        [800.0 , 1504.30],[1000.0 , 1501.38],[1200.0 ,1500.14],[1400.0 ,  1500.12],  
+        [1600.0 ,1501.02],[1800.0 , 1502.57] , [2000.0 , 1504.62],[2200.0 , 1507.02 ],  
+        [2400.0 , 1509.69 ],[2600.0 , 1512.55],[2800.0 , 1515.56],[3000.0 , 1518.67 ],
+        [ 3200.0 , 1521.85 ],[3400.0 , 1525.10 ],[3600.0 , 1528.38],[3800.0 , 1531.70],
+        [4000.0 , 1535.04],[4200.0 , 1538.39],[4400.0 , 1541.76 ],[4600.0 , 1545.14],
+        [4800.0 , 1548.52 ],[5000.0 , 1551.91]
         ]
         self.params = {
             'name': 'arlpy',
             'bottom_absorption': 0.1,
             'bottom_density': 1600,
             'bottom_roughness': 0,
-            'bottom_soundspeed': 1600,
-            'depth': 30,
+            'bottom_soundspeed': 1551.91,
+            'depth': 5000,
             'depth_interp': 'linear',
-            'frequency': 25000,
+            'frequency': 1500,
             'max_angle': 80,
             'min_angle': -80,
-            'rx_depth': 10,
-            'rx_range': 1000,
+            'rx_depth': 400,
+            'rx_range': 500000,
             'soundspeed': ssp,
             'soundspeed_interp': 'spline',
             'surface': None,
             'surface_interp': 'linear',
-            'tx_depth': 5,
+            'tx_depth': 200,
             'tx_directionality': None,
             'type': '2D'
         }
@@ -141,7 +143,7 @@ class BellhopSimulation:
             return None, None, None, None, None, None
 
         try:
-            p = plt.figure(title=env_params['name'] + ' env', xlabel="depth (m)", ylabel="range (m)", width=600, height=350)
+            p = plt.figure(title=env_params['name'] + ' env', xlabel="range (km)", ylabel="depth (m)", width=600, height=350)
             plt.hold(True)
             pm.plot_env(env)
             p = plt.gcf()
@@ -153,7 +155,7 @@ class BellhopSimulation:
 
         try:
             rays = pm.compute_eigenrays(env)
-            q = plt.figure(title=env_params['name'] + ' eigen rays', xlabel="depth (m)", ylabel="range (m)", width=600, height=350)
+            q = plt.figure(title=env_params['name'] + ' eigen rays', xlabel="range (km)", ylabel="depth (m)", width=600, height=350)
             pm.plot_rays(rays, env=env, width=900)
             q = plt.gcf()
             q.title.align = "center"
@@ -164,7 +166,7 @@ class BellhopSimulation:
 
         try:
             arrivals = pm.compute_arrivals(env)
-            r = plt.figure(title=env_params['name'] + ' arrivals', xlabel="amplitude", ylabel="arrival time (s)", width=600, height=350)
+            r = plt.figure(title=env_params['name'] + ' arrivals', xlabel="arrival time (s)", ylabel="amplitude", width=600, height=350)
             pm.plot_arrivals(arrivals, width=900)
             r = plt.gcf()
             r.title.align = "center"
@@ -175,7 +177,7 @@ class BellhopSimulation:
 
         try:
             rays = pm.compute_rays(env)
-            s = plt.figure(title=env_params['name'] + ' rays', xlabel="depth (m)", ylabel="range (m)", width=600, height=350)
+            s = plt.figure(title=env_params['name'] + ' rays', xlabel="range (km)", ylabel="depth (m)", width=600, height=350)
             pm.plot_rays(rays, env=env, width=600)
             s = plt.gcf()
             s.title.align = "center"
@@ -197,10 +199,10 @@ class BellhopSimulation:
 
         try:
             # Place receivers in a grid to visualize the acoustic pressure field
-            env['rx_range'] = np.linspace(0, 1000, 1001)
-            env['rx_depth'] = np.linspace(0, 30, 301)
+            env['rx_range'] = np.linspace(0, 500000, 200)
+            env['rx_depth'] = np.linspace(0, 5000, 301)
             tloss = pm.compute_transmission_loss(env, mode='incoherent')
-            u = plt.figure(title=env_params['name'] + ' transmission loss', xlabel="range (m)", ylabel="depth (m)", width=600, height=350)
+            u = plt.figure(title=env_params['name'] + ' transmission loss', xlabel="range (km)", ylabel="depth (m)", width=600, height=350)
             pm.plot_transmission_loss(tloss, env=env, clim=[-60, -30], width=350)
             u = plt.gcf()
             u.title.align = "center"
