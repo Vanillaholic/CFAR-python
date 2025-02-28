@@ -24,8 +24,8 @@ def ca_cfar_1d(signal, guard_cells=2, train_cells=4, alpha=5):
         
         # 左侧训练区: [start, i - guard_cells)
         # 右侧训练区: (i + guard_cells, end)
-        left_train = np.abs(signal[start : i - guard_cells])
-        right_train = np.abs(signal[i + guard_cells + 1 : end])
+        left_train = signal[start : i - guard_cells]
+        right_train = signal[i + guard_cells + 1 : end]
         
         train_zone = np.concatenate((left_train, right_train))
         noise_est = np.mean(train_zone)  # CA: 取平均

@@ -7,10 +7,12 @@ import arlpy.uwapm as pm
 import arlpy.plot as aplt
 # add/change bathy to env
 import os
+import argparse
+import tqdm
 #uncomment this when using Macos ot linus
 #os.environ["PATH"] += ":/Users/zanesing/Documents/at/Bellhop"
-print(pm.models())
-print(lb.__version__)
+# print(pm.models())
+# print(lb.__version__)
 # 添加在文件开头的导入
 
 
@@ -70,8 +72,8 @@ def ca_cfar_1d(signal, guard_cells=2, train_cells=4, alpha=5):
         
         # 左侧训练区: [start, i - guard_cells)
         # 右侧训练区: (i + guard_cells, end)
-        left_train = np.abs(signal[start : i - guard_cells])
-        right_train = np.abs(signal[i + guard_cells + 1 : end])
+        left_train = signal[start : i - guard_cells]
+        right_train = signal[i + guard_cells + 1 : end]
         
         train_zone = np.concatenate((left_train, right_train))
         noise_est = np.mean(train_zone)  # CA: 取平均
@@ -84,6 +86,13 @@ def ca_cfar_1d(signal, guard_cells=2, train_cells=4, alpha=5):
 
 if __name__ == '__main__':
 
+    #TODO: 导入terminal参数
+    parser = argparse.ArgumentParser(description='Process some arguments.')
+    parser.add_argument('--snr', type=float, default=-5, help='set the signal-noise ratio')
+    parser.add_argument('-o', type=str, default='result.txt', help='保存结果的文件名')
+    # 解析参数
+    args = parser.parse_args()
+
     #TODO: 参数配置
     fs = 4000           # 采样率
     c  = 1500           # 声速
@@ -93,32 +102,35 @@ if __name__ == '__main__':
     env['rx_range']=500000   
 
     rays = pm.compute_rays(env , debug=False)
-    pm.plot_rays(rays, env=env,width=900)
+    #pm.plot_rays(rays, env=env,width=900)
 
     #TODO: 根据arrival计算脉冲响应
     env['rx_range']=60000   #set target to 60km 
     arrivals = pm.compute_arrivals(env)
 
     #终端表格输出
-    print("\n声波到达参数 (前10个路径):")
-    print(tabulate(
-        arrivals[arrivals.arrival_number < 10][['time_of_arrival', 'angle_of_arrival', 'surface_bounces', 'bottom_bounces']],
-        headers=['到达时间(s)', '到达角度(度)', '海面反射', '海底反射'],
-        tablefmt='github',
-        floatfmt=(".3f", ".1f", ".0f", ".0f")
-    ))
+    #print("\n声波到达参数 (前10个路径):")
+    #print(tabulate(
+    #    arrivals[arrivals.arrival_number < 10][['time_of_arrival', 'angle_of_arrival', 'surface_bounces', 'bottom_bounces']],
+    #    headers=['到达时间(s)', '到达角度(度)', '海面反射', '海底反射'],
+    #    tablefmt='github',
+    #    floatfmt=(".3f", ".1f", ".0f", ".0f")
+    #))
     #print(arrivals[arrivals.arrival_number < 10][['time_of_arrival', 'angle_of_arrival', 'surface_bounces', 'bottom_bounces']])
     ir = pm.arrivals_to_impulse_response(arrivals, fs=fs,abs_time=True)
     ir = np.concatenate([ir,np.zeros(int(TIME*fs))])
 
+    first_realtime ,last_realtime= 2*np.min(arrivals['time_of_arrival']),2*np.max(arrivals['time_of_arrival'])
+    real_echo_start = int(fs*first_realtime)
+    real_echo_end = int(fs*last_realtime)
 
     """绘制单位脉冲响应"""
     t = np.arange(len(ir)) / fs
     IR_TIME = len(ir)/fs
-    plt.figure()
-    plt.plot(t, np.abs(ir))
-    plt.xlabel('Time (s)');plt.ylabel('Amplitude');plt.title('Impulse Response')
-    plt.grid(True);
+    # plt.figure()
+    # plt.plot(t, np.abs(ir))
+    # plt.xlabel('Time (s)');plt.ylabel('Amplitude');plt.title('Impulse Response')
+    # plt.grid(True);
 
     #TODO: 生成扫频
     duration = 0.5      # 单个Chirp持续时间
@@ -131,94 +143,134 @@ if __name__ == '__main__':
     #Tx = np.tile(base_chirp, num_chirp)  # 使用np.tile代替循环
     Tx = base_chirp
 
-    '''发射信号补零,random_num表示发射时刻不确定'''
-    random_num = np.random.randint(0,100)
-    Tx_paddle = np.concatenate([np.zeros(random_num),Tx,np.zeros(len(ir)-len(Tx)-random_num)])  #长度等于相响应长度
-    #绘制补零后的信号
-    t = np.linspace(0, len(Tx_paddle) / fs, len(Tx_paddle))
-    plt.figure()
-    plt.title('transmitted signal')
-    plt.plot(t,Tx_paddle)
-    plt.grid(True);plt.ylim(-2,2);
+    success_count = 0
+    total_epochs = 1e5  # 总的 epoch 数量
+    # 使用 tqdm 包装循环
+    for epoch in tqdm(range(1, total_epochs + 1), desc="running CFAR experiment", unit="epoch"):
+        '''发射信号补零,random_num表示发射时刻不确定'''
+        random_num = np.random.randint(0,100)
+        Tx_paddle = np.concatenate([np.zeros(random_num),Tx,np.zeros(len(ir)-len(Tx)-random_num)])  #长度等于相响应长度
+        #绘制补零后的信号
+        t = np.linspace(0, len(Tx_paddle) / fs, len(Tx_paddle))
+        '''
+        plt.figure()
+        plt.title('transmitted signal')
+        plt.plot(t,Tx_paddle)
+        plt.grid(True);plt.ylim(-2,2);
+        '''
 
+        #TODO: 两次卷积计算回波信号
+        from scipy.signal import convolve
+        s = convolve( ir, Tx_paddle,mode='full')
+        Rx = convolve(ir, s,mode='full')
+        Rx = Rx[0:len(Tx_paddle)]
 
-    #TODO: 两次卷积计算回波信号
-    from scipy.signal import convolve
-    s = convolve( ir, Tx_paddle,mode='full')
-    Rx = convolve(ir, s,mode='full')
-        # You can optionally check the length of the results
-    print("Length of transmitted signal: ", len(Tx_paddle))
-    print("Length of first convolution result: ", len(s))
-    print("Length of second convolution result: ", len(Rx))
-    Rx = Rx[0:len(Tx_paddle)]
+        # #绘制
+        # plt.figure()
+        # plt.title('received signal')
+        # plt.plot(t, Rx)
+        # plt.grid(True)
 
-    #绘制
-    plt.figure()
-    plt.title('received signal')
-    plt.plot(t, Rx)
-    plt.grid(True)
+        """加入噪声"""
+        from noise import awgn
+        Rx_noisy = awgn(Rx, snr=args.snr, out='signal', method='vectorized', axis=0)
 
-    """加入噪声"""
-    from noise import awgn
-    Rx_noisy = awgn(Rx, snr=-5, out='signal', method='vectorized', axis=0)
+        #TODO: 经过带通滤波器 , 匹配滤波器 再包络检波
+        from scipy import signal  
+        # 带通滤波器： 1350-1650Hz
+        fmax = fs/2
+        f_start ,f_end= 1350/fmax ,1650/fmax
+        b, a  =   signal.butter( 8 , [ f_start , f_end ],  'bandpass' )    #配置滤波器 8 表示滤波器的阶数
+        BPF_out  =   signal.filtfilt(b, a, Rx_noisy)   #data为要过滤的信号
 
-    #TODO: 经过带通滤波器 , 匹配滤波器 再包络检波
-    from scipy import signal  
-    # 带通滤波器： 1350-1650Hz
-    fmax = fs/2
-    f_start ,f_end= 1350/fmax ,1650/fmax
-    b, a  =   signal.butter( 8 , [ f_start , f_end ],  'bandpass' )    #配置滤波器 8 表示滤波器的阶数
-    BPF_out  =   signal.filtfilt(b, a, Rx_noisy)   #data为要过滤的信号
+        # 匹配滤波：将输入信号与参考信号的时间反转版本进行卷积
+        matched_out = signal.fftconvolve(BPF_out, template[::-1], mode='same')
 
-    # 匹配滤波：将输入信号与参考信号的时间反转版本进行卷积
-    matched_out = signal.fftconvolve(BPF_out, template[::-1], mode='same')
+        # 包络检波: python中的hilbert是直接生成解析信号,不是hilbert变换 
+        analytic = signal.hilbert(np.real(matched_out), N=None, axis=-1)
+        envelope = np.abs(analytic)
+        '''
+        #绘制信号波形
+        plt.figure(figsize=(10, 6))
+        
+        # 带通滤波信号
+        plt.subplot(3, 1, 1)
+        plt.plot(t, BPF_out);
+        plt.title('Bandpass Output');plt.grid(True)
+        # 匹配滤波信号
+        plt.subplot(3, 1, 2)
+        plt.plot(t, matched_out)
+        plt.xlabel('Time (s)');plt.title('Matched Output')
+        plt.grid(True)
+        #包络检波后的信号
+        plt.subplot(3, 1, 3)
+        plt.plot(t[int(79.75*fs):int(80.25*fs)], envelope[int(79.75*fs):int(80.25*fs)])
+        plt.xlabel('Time (s)');plt.title('Envelope')
+        plt.grid(True)
+        plt.tight_layout()
+        '''
+        envelope = envelope/np.max(envelope)
 
-    # 包络检波: python中的hilbert是直接生成解析信号,不是hilbert变换 
-    analytic = signal.hilbert(np.real(matched_out), N=None, axis=-1)
-    envelope = np.abs(analytic)
-    
-    #绘制信号波形
-    plt.figure(figsize=(10, 6))
+        #TODO: 回波信号进行1D-CA-CFAR
 
-    # 带通滤波信号
-    plt.subplot(3, 1, 1)
-    plt.plot(t, BPF_out);
-    plt.title('Bandpass Output');plt.grid(True)
-    # 匹配滤波信号
-    plt.subplot(3, 1, 2)
-    plt.plot(t, matched_out)
-    plt.xlabel('Time (s)');plt.title('Matched Output')
-    plt.grid(True)
-    #包络检波后的信号
-    plt.subplot(3, 1, 3)
-    plt.plot(t[int(79.75*fs):int(80.25*fs)], envelope[int(79.75*fs):int(80.25*fs)])
-    plt.xlabel('Time (s)');plt.title('Envelope')
-    plt.grid(True)
-    plt.tight_layout()
+        guard_len ,train_len = 20,500  #设置守护单元和训练单元的长度
+        N = guard_len+train_len  
+        #alpha=  5
+        #P_f= (alpha/(2*N)+1)**(-2*N)
+        P_f = 5e-5                   # 计算设置的虚警概率
+        alpha = 2 * N * (np.power(P_f, -1 / (2 * N)) - 1)         #设置门限因子 
+        '''
+        print("虚警概率为:",P_f)
+        '''
+        cfar_mask , thresholds = ca_cfar_1d(envelope, guard_cells=guard_len, train_cells=train_len, alpha=alpha)
+        detected_indices = np.where(cfar_mask == 1)[0]
 
-    #TODO: 回波信号进行1D-CA-CFAR
+        success = np.any((detected_indices >= real_echo_start) & (detected_indices < real_echo_end))
+        if success:
+            #在真实回波范围内检测到信号，初步判定检测成功
+            success_count += 1
+        #在真实回波范围内未检测到信号，检测失败
 
-    guard_len ,train_len = 2,4  #设置守护单元和训练单元的长度
-    N = guard_len+train_len    
-    P_f = 1e-2                   # 计算设置的虚警概率
-    alpha = N*P_f**(-1/N-1)         #设置门限因子 
-    print("虚警概率为:",P_f)
-    
-    #进行CFAR
-    cfar_mask , thresholds = ca_cfar_1d(envelope, guard_cells=guard_len, train_cells=train_len, alpha=alpha)
+        # # 绘制回波信号和检测结果
+        # plt.figure(figsize=(12, 6))
+        # plt.subplot(2,1,1)
+        # plt.plot(t, envelope, label='Received Signal')
+        # plt.plot(t,thresholds,label='Threshold')
+        # plt.plot(t[detected_indices], envelope[detected_indices], 'rx', label='CFAR Detections')
+        # plt.title(f'CFAR Detection Results($P_f=${P_f})')
+        # plt.xlabel('Time (s)')
+        # plt.ylabel('Amplitude')
+        # plt.legend()
+        # plt.grid(True)
 
-    detected_indices = np.where(cfar_mask == 1)[0]
+        # # Zoom the result
+        # buffer = envelope[int(79.75*fs):int(80.25*fs)]
+        # t_buffer = t[int(79.75*fs):int(80.25*fs)]
+        # thresholds_buffer = thresholds[int(79.75*fs):int(80.25*fs)]
+        # cfar_mask_buffer = cfar_mask[int(79.75*fs):int(80.25*fs)]
+        # detected_indices = np.where(cfar_mask_buffer == 1)[0]
 
-    # 绘制回波信号和检测结果
-    plt.figure(figsize=(12, 6))
-    plt.plot(t[int(79.75*fs):int(80.25*fs)], envelope[int(79.75*fs):int(80.25*fs)], label='Received Signal')
-    plt.plot(t[detected_indices], np.abs(envelope[detected_indices]), 'rx', label='CFAR Detections')
-    plt.plot(t[int(79.75*fs):int(80.25*fs)],thresholds[int(79.75*fs):int(80.25*fs)],label='Threshold')
-    plt.title('CFAR Detection Results')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Amplitude')
-    plt.legend()
-    plt.grid(True)
+        # # 绘制放大结果
+        # plt.subplot(2,1,2)
+        # plt.plot(t_buffer, buffer, label='Buffer')
+        # plt.plot(t_buffer,thresholds_buffer,label='Threshold')
+        # plt.plot(t_buffer[detected_indices], buffer[detected_indices], 'rx', label='CFAR Detections')
+        # plt.title('Zoomed Results')
+        # plt.xlabel('Time (s)')
+        # plt.ylabel('Amplitude')
+        # plt.legend()
+        # plt.grid(True)
+        # plt.tight_layout()
 
+        # plt.show()
+        
+    # 保存结果到文件
+    with open(args.output_file, 'w') as f:
+        f.write(f"虚警概率为: {P_f}\n")
+        f.write(f"SNR: {args.snr}\n")
+        f.write(f"蒙特卡洛实验次数: {epochs}\n")
+        f.write(f"检测成功次数: {success_count}\n")
+        f.write(f"检测成功率: {success_count / epochs * 100:.2f}%\n")
 
-    plt.show()
+    print(f"结果已保存到 {args.output_file}")
+
