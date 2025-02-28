@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from tabulate import tabulate
 import matplotlib.pyplot as plt
-import librosa as lb
+#import librosa as lb
 import arlpy.uwapm as pm
 import arlpy.plot as aplt
 # add/change bathy to env

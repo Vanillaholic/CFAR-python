@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 from tabulate import tabulate
 import matplotlib.pyplot as plt
-import librosa as lb
+#import librosa as lb
 import arlpy.uwapm as pm
 import arlpy.plot as aplt
 # add/change bathy to env
 import os
 import argparse
-import tqdm
+from tqdm import tqdm
 #uncomment this when using Macos ot linus
 #os.environ["PATH"] += ":/Users/zanesing/Documents/at/Bellhop"
 # print(pm.models())
@@ -144,9 +144,9 @@ if __name__ == '__main__':
     Tx = base_chirp
 
     success_count = 0
-    total_epochs = 1e5  # 总的 epoch 数量
+    total_epochs = 8000  # 总的 epoch 数量
     # 使用 tqdm 包装循环
-    for epoch in tqdm(range(1, total_epochs + 1), desc="running CFAR experiment", unit="epoch"):
+    for epoch in tqdm(range(1, int(total_epochs) + 1), desc="running CFAR experiment", unit="epoch"):
         '''发射信号补零,random_num表示发射时刻不确定'''
         random_num = np.random.randint(0,100)
         Tx_paddle = np.concatenate([np.zeros(random_num),Tx,np.zeros(len(ir)-len(Tx)-random_num)])  #长度等于相响应长度
@@ -268,9 +268,9 @@ if __name__ == '__main__':
     with open(args.output_file, 'w') as f:
         f.write(f"虚警概率为: {P_f}\n")
         f.write(f"SNR: {args.snr}\n")
-        f.write(f"蒙特卡洛实验次数: {epochs}\n")
+        f.write(f"蒙特卡洛实验次数: {total_epochs}\n")
         f.write(f"检测成功次数: {success_count}\n")
-        f.write(f"检测成功率: {success_count / epochs * 100:.2f}%\n")
+        f.write(f"检测成功率: {success_count / total_epochs * 100:.2f}%\n")
 
     print(f"结果已保存到 {args.output_file}")
 
