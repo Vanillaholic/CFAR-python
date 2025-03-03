@@ -1,0 +1,5 @@
+running CFAR experiment:  12%|███████▎                  running CFAR experiment: 100%|████████████████████████████████████████████████████████████| 8000/8000 [10:49:57<00:00,  4.87s/epoch]
+Traceback (most recent call last):
+  File "D:\01_Projects\CFAR-python\one_pulse_only.py", line 268, in <module>
+    with open(args.output_file, 'w') as f:
+AttributeError: 'Namespace' object has no attribute 'output_file'
