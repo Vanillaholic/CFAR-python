@@ -205,7 +205,7 @@ if __name__ == '__main__':
     Tx = base_chirp
 
     success_count = 0
-    total_epochs = 10000  # 总的 epoch 数量
+    total_epochs = 5000  # 总的 epoch 数量
 
     '''利用 multiprocessing.Pool 并行化 Monte Carlo 模拟'''
     # with Pool(processes=4) as pool:
@@ -296,7 +296,7 @@ if __name__ == '__main__':
         N = guard_len+train_len  
         #alpha=  5
         #P_f= (alpha/(2*N)+1)**(-2*N)
-        P_f = 5e-5                   # 计算设置的虚警概率
+        P_f = 1e-5                   # 计算设置的虚警概率
         alpha = 2 * N * (cp.power(P_f, -1 / (2 * N)) - 1)         #设置门限因子 
         '''
         print("虚警概率为:",P_f)
