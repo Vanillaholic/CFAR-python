@@ -1,9 +1,6 @@
 import numpy as np
-import pandas as pd
 from tabulate import tabulate
 import matplotlib.pyplot as plt
-import scipy
-#import librosa as lb
 import arlpy.uwapm as pm
 import arlpy.plot as aplt
 # add/change bathy to env
@@ -13,14 +10,10 @@ import argparse
 from tqdm import tqdm
 from scipy import signal
 from scipy.signal import chirp, convolve, butter, filtfilt, fftconvolve, hilbert
-# 使用 cupy 的卷积函数
-#from cupyx.scipy.signal import convolve,butter, filtfilt, fftconvolve, hilbert
+
 from noise import awgn  # 请确保已安装 noise 包
 from multiprocessing import Pool
-#uncomment this when using Macos ot linus
-#os.environ["PATH"] += ":/Users/zanesing/Documents/at/Bellhop"
-# print(pm.models())
-# print(lb.__version__)
+
 
 
 #TODO SSP
@@ -138,29 +131,18 @@ if __name__ == '__main__':
     P_f = 5e-5                   # 计算设置的虚警概率
     alpha = 2 * N * (np.power(P_f, -1 / (2 * N)) - 1)         #设置门限因子 
 
-
-    '''利用 multiprocessing.Pool 并行化 Monte Carlo 模拟'''
+    # 使用 tqdm 包装循环
     success_count = 0
-    total_epochs = 50  # 总的 epoch 数量
-    with Pool(processes=6) as pool:
-         # 使用 tqdm 显示进度
-         results = list(tqdm(pool.imap(run_trial(args), range(total_epochs)),
-                             total=total_epochs, desc="Running Monte Carlo experiment"))
-    
-    success_count = sum(results)
+    total_epochs = 5000  # 总的 epoch 数量
+    for epoch in tqdm(range(1, int(total_epochs) + 1), desc="running Monte Carlo experiment", unit="epoch"):
+        '''发射信号补零,random_num表示发射时刻不确定'''
+        random_num = np.random.randint(0,4000)
 
-# 使用 tqdm 包装循环
-success_count = 0
-total_epochs = 5000  # 总的 epoch 数量
-for epoch in tqdm(range(1, int(total_epochs) + 1), desc="running Monte Carlo experiment", unit="epoch"):
-    '''发射信号补零,random_num表示发射时刻不确定'''
-    random_num = np.random.randint(0,4000)
-
-    Tx_paddle = np.concatenate([np.zeros(random_num),Tx,np.zeros(TIME*fs-len(Tx)-random_num)])  #长度等于相响应长度
-    real_echo_start = int(fs*first_realtime)+random_num
-    real_echo_end = int(fs*last_realtime)+random_num
-    #绘制补零后的信号
-    t = np.linspace(0, len(Tx_paddle) / fs, len(Tx_paddle))
+        Tx_paddle = np.concatenate([np.zeros(random_num),Tx,np.zeros(TIME*fs-len(Tx)-random_num)])  #长度等于相响应长度
+        real_echo_start = int(fs*first_realtime)+random_num
+        real_echo_end = int(fs*last_realtime)+random_num
+        #绘制补零后的信号
+        t = np.linspace(0, len(Tx_paddle) / fs, len(Tx_paddle))
 #     '''绘制补零后的信号
 #     plt.figure()
 #     plt.title('transmitted signal')
@@ -168,36 +150,36 @@ for epoch in tqdm(range(1, int(total_epochs) + 1), desc="running Monte Carlo exp
 #     plt.grid(True);plt.ylim(-2,2);
 #     '''
 
-    #TODO: 两次卷积计算回波信号
-    s = convolve( ir, Tx_paddle,mode='full')
-    Rx = convolve(ir, s,mode='full')
-    Rx = Rx[0:len(Tx_paddle)]
+        #TODO: 两次卷积计算回波信号
+        s = convolve( ir, Tx_paddle,mode='full')
+        Rx = convolve(ir, s,mode='full')
+        Rx = Rx[0:len(Tx_paddle)]
 
-    """加入噪声"""
-    Rx_noisy = awgn(Rx, snr=args.snr, out='signal', method='vectorized', axis=0)
+        """加入噪声"""
+        Rx_noisy = awgn(Rx, snr=args.snr, out='signal', method='vectorized', axis=0)
 
-    #TODO: 经过带通滤波器 , 匹配滤波器 再包络检波
+        #TODO: 经过带通滤波器 , 匹配滤波器 再包络检波
 
-    BPF_out  =   signal.filtfilt(b, a, Rx_noisy)   #data为要过滤的信号
+        BPF_out  =   signal.filtfilt(b, a, Rx_noisy)   #data为要过滤的信号
 
-    # 匹配滤波：将输入信号与参考信号的时间反转版本进行卷积
-    matched_out = signal.fftconvolve(BPF_out, template[::-1], mode='same')
+        # 匹配滤波：将输入信号与参考信号的时间反转版本进行卷积
+        matched_out = signal.fftconvolve(BPF_out, template[::-1], mode='same')
 
-    # 包络检波: python中的hilbert是直接生成解析信号,不是hilbert变换 
-    analytic = signal.hilbert(np.real(matched_out), N=None, axis=-1)
-    envelope = np.abs(analytic)
-    envelope = envelope/np.max(envelope)
+        # 包络检波: python中的hilbert是直接生成解析信号,不是hilbert变换 
+        analytic = signal.hilbert(np.real(matched_out), N=None, axis=-1)
+        envelope = np.abs(analytic)
+        envelope = envelope/np.max(envelope)
 
-    #TODO: 回波信号进行1D-CA-CFAR
+        #TODO: 回波信号进行1D-CA-CFAR
     
-    cfar_mask , thresholds = ca_cfar_1d(envelope, guard_cells=guard_len, train_cells=train_len, alpha=alpha)
-    detected_indices = np.where(cfar_mask == 1)[0]
+        cfar_mask , thresholds = ca_cfar_1d(envelope, guard_cells=guard_len, train_cells=train_len, alpha=alpha)
+        detected_indices = np.where(cfar_mask == 1)[0]
 
-    success = np.any((detected_indices >= real_echo_start) & (detected_indices < real_echo_end))
-    if success:
+        success = np.any((detected_indices >= real_echo_start) & (detected_indices < real_echo_end))
+        if success:
         #在真实回波范围内检测到信号，初步判定检测成功
-        success_count += 1
-#     #否则不计入，在真实回波范围内未检测到信号，检测失败
+            success_count += 1
+       #否则不计入，在真实回波范围内未检测到信号，检测失败
 
     # 保存结果到文件
     with open(args.output, 'a',encoding='utf-8') as f:

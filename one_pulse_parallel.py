@@ -169,7 +169,7 @@ if __name__ == "__main__":
     with Pool(processes=10) as pool:
          # 使用 tqdm 显示进度
         results = list(tqdm(pool.imap(run_trial, range(total_epochs)),
-                             total=total_epochs, desc="Running Monte Carlo experiment"))
+                             total=total_epochs, desc="Running Monte Carlo experiment"),unit="epoch")
     
     success_count = sum(results)
 
