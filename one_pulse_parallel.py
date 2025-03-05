@@ -11,6 +11,8 @@ from scipy.signal import chirp, convolve, butter, filtfilt, fftconvolve, hilbert
 from noise import awgn  # 请确保已安装 noise 包
 from multiprocessing import Pool
 
+from modules.cfar import go_cfar_1d
+
 #TODO SSP
 # add/change SSP to env
 ssp = [                                 #Munk 声速刨面
@@ -152,8 +154,9 @@ def run_trial(trial_idx):
     envelope = np.abs(analytic)
     envelope = envelope / np.max(envelope)
     
-                 # 计算设置的虚警概率
-    cfar_mask, thresholds = ca_cfar_1d(envelope, guard_cells=guard_len, train_cells=train_len, alpha=alpha)
+    # 计算设置的虚警概率
+    
+    cfar_mask, thresholds = go_cfar_1d(envelope, guard_cells=guard_len, train_cells=train_len, alpha=alpha)
     detected_indices = np.where(cfar_mask == 1)[0]
     
     # 判断是否在真实回波范围内检测到目标
@@ -166,10 +169,11 @@ if __name__ == "__main__":
     '''利用 multiprocessing.Pool 并行化 Monte Carlo 模拟'''
     success_count = 0
     total_epochs = 4000  # 总的 epoch 数量
-    with Pool(processes=10) as pool:
+    num_process = 10
+    with Pool(processes=num_process) as pool:
          # 使用 tqdm 显示进度
         results = list(tqdm(pool.imap(run_trial, range(total_epochs)),
-                             total=total_epochs, desc="Running Monte Carlo experiment"),unit="epoch")
+                             total=total_epochs, desc="Running Monte Carlo experiment",unit="epoch"))
     
     success_count = sum(results)
 
@@ -180,6 +184,7 @@ if __name__ == "__main__":
         f.write(f"守护单元{guard_len},训练单元{train_len}\n")
         f.write(f"SNR: {args.snr}\n")
         f.write(f"蒙特卡洛实验次数: {total_epochs}\n")
+        f.write(f"线程数:{num_process}\n")
         f.write(f"检测成功次数: {success_count}\n")
         f.write(f"检测成功率: {success_count / total_epochs * 100:.2f}%\n")
         f.write("---------------------------------------------------------\n")
