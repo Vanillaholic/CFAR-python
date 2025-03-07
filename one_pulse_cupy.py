@@ -48,7 +48,7 @@ b_gpu, a_gpu = cp.asarray(b), cp.asarray(a)
 # 计算脉冲响应（CPU）
 arrivals = pm.compute_arrivals(env)
 ir = pm.arrivals_to_impulse_response(arrivals, fs=fs, abs_time=True)
-ir_gpu = cp.asarray(ir['ir'])  # 转换为CuPy数组
+ir_gpu = cp.asarray(ir)  # 转换为CuPy数组
 
 # 生成参考信号（GPU）
 duration = 0.5
@@ -63,8 +63,38 @@ def awgn_gpu(signal, snr):
     noise = cp.random.normal(0, cp.sqrt(noise_power), signal.shape)
     return signal + noise
 
-# 并行化CFAR检测（GPU优化版）
+'''并行化CFAR检测（GPU优化版）'''
+def ca_cfar_1d_gpu(signal, guard_cells, train_cells, alpha):
+    '''
+    CA-CFAR算法
+    '''
+    N = len(signal)
+    total_window = guard_cells + train_cells
+    signal_ext = cp.pad(signal, (total_window, total_window), mode='constant')
+    #信号的长度增加了 2 * total_window，
+    #这样可以确保滑动窗口操作后的输出与输入信号的大小一致。
+    
+    # 创建滑动窗口
+    window_size = 2 * total_window + 1
+    windows = cp.lib.stride_tricks.sliding_window_view(signal_ext, window_size)
+    
+    # 提取训练区并计算均值
+    left = windows[:, :train_cells]
+    right = windows[:, -train_cells:]
+    train = cp.concatenate((left, right), axis=1)
+    noise_est = cp.mean(train, axis=1)
+    
+    # 计算阈值并比较
+    thresholds = alpha * noise_est
+    central = windows[:, train_cells]  # 中心点
+    cfar_mask = (central > thresholds).astype(int)
+    
+    # 去除padding部分
+    return cfar_mask[total_window:-total_window], thresholds
 def go_cfar_1d_gpu(signal, guard_cells, train_cells, alpha):
+    '''
+    GO-CFAR算法
+    '''
     N = len(signal)
     total_window = guard_cells + train_cells
     signal_ext = cp.pad(signal, (total_window, total_window), mode='constant')
@@ -76,8 +106,78 @@ def go_cfar_1d_gpu(signal, guard_cells, train_cells, alpha):
     # 提取训练区并计算均值
     left = windows[:, :train_cells]
     right = windows[:, -train_cells:]
-    train = cp.concatenate((left, right), axis=1)
-    noise_est = cp.mean(train, axis=1)
+    mean1 = cp.mean(left,axis=1)
+    mean2 = cp.mean(right,axis=1)
+    
+    # 逐元素比较，选择较大的均值作为噪声估计
+    noise_est = cp.maximum(mean1, mean2)
+    
+    # 计算阈值并比较
+    thresholds = alpha * noise_est
+    central = windows[:, train_cells]  # 中心点
+    cfar_mask = (central > thresholds).astype(int)
+    
+    # 去除padding部分
+    return cfar_mask[total_window:-total_window], thresholds
+
+def so_cfar_1d_gpu(signal, guard_cells, train_cells, alpha):
+    '''
+    SO-CFAR算法
+    '''
+    N = len(signal)
+    total_window = guard_cells + train_cells
+    signal_ext = cp.pad(signal, (total_window, total_window), mode='constant')
+    
+    # 创建滑动窗口
+    window_size = 2 * total_window + 1
+    windows = cp.lib.stride_tricks.sliding_window_view(signal_ext, window_size)
+    
+    # 提取训练区并计算均值
+    left = windows[:, :train_cells]
+    right = windows[:, -train_cells:]
+    mean1 = cp.mean(left,axis=1)
+    mean2 = cp.mean(right,axis=1)
+    
+    # 逐元素比较，选择较小的均值作为噪声估计
+    noise_est = cp.minimum(mean1, mean2)
+    
+    # 计算阈值并比较
+    thresholds = alpha * noise_est
+    central = windows[:, train_cells]  # 中心点
+    cfar_mask = (central > thresholds).astype(int)
+    
+    # 去除padding部分
+    return cfar_mask[total_window:-total_window], thresholds
+
+
+def os_cfar_1d_gpu(signal, guard_cells, train_cells, alpha, k):
+    '''
+    OS-CFAR算法
+    :param signal: 输入信号
+    :param guard_cells: 保护单元数
+    :param train_cells: 训练单元数
+    :param alpha: 阈值乘子
+    :param k: 排序后选择的第k个值（从0开始索引）
+    :return: CFAR掩码和阈值
+    '''
+    N = len(signal)
+    total_window = guard_cells + train_cells
+    signal_ext = cp.pad(signal, (total_window, total_window), mode='constant')
+    
+    # 创建滑动窗口
+    window_size = 2 * total_window + 1
+    windows = cp.lib.stride_tricks.sliding_window_view(signal_ext, window_size)
+    
+    # 提取训练区（左侧和右侧）
+    left = windows[:, :train_cells]
+    right = windows[:, -train_cells:]
+    train_region = cp.concatenate((left, right), axis=1)  # 合并训练区
+    
+    # 对训练区进行排序
+    sorted_train_region = cp.sort(train_region, axis=1)
+    
+    # 选择第k个值作为噪声估计
+    noise_est = sorted_train_region[:, k]
     
     # 计算阈值并比较
     thresholds = alpha * noise_est
@@ -114,12 +214,12 @@ def run_trial_gpu(trial_idx):
     envelope /= cp.max(envelope)
     
     # CFAR检测
-    cfar_mask, _ = go_cfar_1d_gpu(envelope, guard_len, train_len, alpha)
+    cfar_mask, _ = os_cfar_1d_gpu(envelope, guard_len, train_len, alpha,k=100)
     detected = cp.where(cfar_mask == 1)[0]
     
     # 判断检测结果
-    real_start = int(fs * min(ir['delay'])) + random_num
-    real_end = int(fs * max(ir['delay'])) + random_num
+    real_start = 2*int(fs * cp.min(arrivals['time_of_arrival']) )+ random_num
+    real_end = 2*int(fs * cp.max(arrivals['time_of_arrival'])) + random_num
     success = cp.any((detected >= real_start) & (detected <= real_end))
     return success.item()
 
@@ -132,8 +232,8 @@ if __name__ == "__main__":
 
     # 全局参数
     TIME = 200
-    guard_len, train_len = 20, 400
-    P_f = 1e-5
+    guard_len, train_len = 10, 200
+    P_f = 1e-6
     alpha = 2 * (guard_len + train_len) * (P_f ** (-1/(2*(guard_len + train_len))) - 1)
     
     # 运行试验
@@ -143,9 +243,10 @@ if __name__ == "__main__":
         success_count += run_trial_gpu(_)
     
     # 保存结果
-    with open(args.output, 'a') as f:
+    with open(args.output, 'a',encoding='utf-8') as f:
         f.write("\n")
         f.write(f"虚警概率为: {P_f}\n")
+        f.write(f"守护单元{guard_len},训练单元{train_len}\n")
         f.write(f"SNR: {args.snr}\n")
         f.write(f"蒙特卡洛实验次数: {total_trials}\n")
         f.write(f"检测成功次数: {success_count}\n")
