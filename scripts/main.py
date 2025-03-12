@@ -164,7 +164,7 @@ if __name__ == '__main__':
     plt.grid(True)
 
     """加入噪声"""
-    from noise import awgn
+    from modules.noise import awgn
     Rx_noisy = awgn(Rx, snr=10, out='signal', method='vectorized', axis=0)
 
     #TODO: 经过带通滤波器 , 匹配滤波器 再包络检波

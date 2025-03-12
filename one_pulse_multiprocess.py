@@ -2,13 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import arlpy.uwapm as pm
 import arlpy.plot as aplt
-from noise import awgn
+from modules.noise import awgn
 import os
 import argparse
 from tqdm import tqdm
 from scipy import signal
 from scipy.signal import chirp, convolve, butter, filtfilt, fftconvolve, hilbert
-from noise import awgn  # 请确保已安装 noise 包
+from modules.noise import awgn  # 请确保已安装 noise 包
 from multiprocessing import Pool
 
 from modules.cfar import go_cfar_1d
