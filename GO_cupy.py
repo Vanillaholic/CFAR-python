@@ -290,4 +290,4 @@ if __name__ == "__main__":
         f.write(f"检测成功率: {success_count/total_trials:.2%}%\n")
         f.write("---------------------------------------------------------\n")
 
-    print(f"结果已保存到 {args.output}")
+    print(f"成功概率为:{success_count/total_trials:.2%}%,结果已保存到 {args.output}")

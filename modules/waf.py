@@ -117,9 +117,6 @@ def wideband_ambiguity(tx_signal, rx_signal, r, b, length, c, max_velocity, targ
         # Zero padding to match signal length
         if len(doppler_scaled_signal) > len(delayed_signal):
             zero_padding = len(doppler_scaled_signal) - len(delayed_signal)
-            # Python concat 需要是同长度 array
-            # delayed_signal 被修改后，会影响后面循环，可能不太合适
-            # 一般做法：生成复制的 delayed_signal_copy
             delayed_signal_copy = np.concatenate([delayed_signal, np.zeros(zero_padding)])
         else:
             delayed_signal_copy = delayed_signal[:]
@@ -132,7 +129,7 @@ def wideband_ambiguity(tx_signal, rx_signal, r, b, length, c, max_velocity, targ
         mf_output = match_filter(delayed_signal_copy, doppler_scaled_signal, 'none')
         ambiguity_matrix[:, i] = np.abs(mf_output[:])  # store column
 
-    # Downsampling in row direction
+ 
     # 首先确定行方向降采样后的新行数
     # resample_poly(…, 1, 6) => up=1, down=6 => 行数/6 (大约)
     original_rows = ambiguity_matrix.shape[0]
@@ -151,10 +148,10 @@ def wideband_ambiguity(tx_signal, rx_signal, r, b, length, c, max_velocity, targ
             col_resampled = np.concatenate([col_resampled, np.zeros(downsampled_rows - len(col_resampled))])
         resampled_ambiguity[:, i] = col_resampled
 
-    # Construct the distance axis
+    # 计算距离坐标轴
     num_delays = resampled_ambiguity.shape[0]
-    delay_index = np.arange(1, num_delays + 1)
-    range_axis = (delay_index - num_delays / 2) * (c / (2 * fs))
+    delay_index = np.arange(0, num_delays)
+    range_axis = (delay_index) * (c / (2 * fs))
 
     return resampled_ambiguity, velocity_axis, range_axis
 

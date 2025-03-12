@@ -155,18 +155,8 @@ def os_cfar_1d(signal, guard_cells=2, train_cells=4, alpha=5 , k=5, T=0.5):
         # 选取第k小的值作为噪声估计的基础
         kth_value = sorted_train[k - 1]  # 因为索引从0开始
 
-        # 计算公式中的参数
-        R = len(train_zone)  # 训练单元总数
-        comb_R_k = comb(R, k, exact=False)  # 组合数 C(R, k)
-        gamma_R_k_T = gamma(R - k + 1 + T)  # Γ(R - k + 1 + T)
-        gamma_k = gamma(k)  # Γ(k)
-        gamma_R_T = gamma(R + 1 + T)  # Γ(R + 1 + T)
-
-        # 计算 P_{fa, os}
-        P_fa_os = k * comb_R_k * (gamma_R_k_T * gamma_k) / gamma_R_T
-
         # 噪声估计
-        noise_est = kth_value * P_fa_os
+        noise_est = kth_value * kth_value
 
         # 计算阈值
         threshold = alpha * noise_est
@@ -202,7 +192,7 @@ def ca_cfar_1d_gpu(signal, guard_cells, train_cells, alpha):
     
     # 计算阈值并比较
     thresholds = alpha * noise_est
-    central = windows[:, train_cells]  # 中心点
+    central = windows[:, train_cells+guard_cells]  # 中心点
     cfar_mask = (central > thresholds).astype(int)
     
     # 去除padding部分
@@ -230,7 +220,7 @@ def go_cfar_1d_gpu(signal, guard_cells, train_cells, alpha):
     
     # 计算阈值并比较
     thresholds = alpha * noise_est
-    central = windows[:, train_cells]  # 中心点
+    central = windows[:, train_cells+guard_cells]  # 中心点
     cfar_mask = (central > thresholds).astype(int)
     
     # 去除padding部分
@@ -259,7 +249,7 @@ def so_cfar_1d_gpu(signal, guard_cells, train_cells, alpha):
     
     # 计算阈值并比较
     thresholds = alpha * noise_est
-    central = windows[:, train_cells]  # 中心点
+    central = windows[:, train_cells+guard_cells]  # 中心点
     cfar_mask = (central > thresholds).astype(int)
     
     # 去除padding部分
@@ -297,7 +287,7 @@ def os_cfar_1d_gpu(signal, guard_cells, train_cells, alpha, k):
     
     # 计算阈值并比较
     thresholds = alpha * noise_est
-    central = windows[:, train_cells]  # 中心点
+    central = windows[:, train_cells+guard_cells]  # 中心点
     cfar_mask = (central > thresholds).astype(int)
     
     # 去除padding部分
