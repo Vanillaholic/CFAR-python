@@ -32,25 +32,22 @@ env = pm.create_env2d(
     frequency=1500,
     rx_range=60000
 )
-
-# 生成Chirp信号（GPU版本）
-def generate_chirp(duration, f0, f1, fs):
-    t = cp.linspace(0, duration, int(duration * fs), endpoint=False)
-    chirp_signal = cp.sin(2 * cp.pi * (f0 * t + (f1 - f0) * t**2 / (2 * duration)))
-    return chirp_signal
-
 # 带通滤波器系数在CPU计算
 fs = 4000
 fmax = fs / 2
 f_start, f_end = 1350 / fmax, 1650 / fmax
 b, a = butter(8, [f_start, f_end], 'bandpass')
 b_gpu, a_gpu = cp.asarray(b), cp.asarray(a)
-
+B = 200
 # 计算脉冲响应（CPU）
 arrivals = pm.compute_arrivals(env)
 ir = pm.arrivals_to_impulse_response(arrivals, fs=fs, abs_time=True)
 ir_gpu = cp.asarray(ir)  # 转换为CuPy数组
-
+# 生成Chirp信号（GPU版本）
+def generate_chirp(duration, f0, f1, fs):
+    t = cp.linspace(0, duration, int(duration * fs), endpoint=False)
+    chirp_signal = cp.sin(2 * cp.pi * (f0 * t + (f1 - f0) * t**2 / (2 * duration)))
+    return chirp_signal
 # 生成参考信号（GPU）
 duration = 0.1
 
@@ -58,7 +55,7 @@ duration = 0.1
 # base_chirp = generate_chirp(duration, f0, f1, fs)
 # template_gpu = base_chirp[::-1].copy()  # 匹配滤波模板
 
-# 定义生成相位编码信号的函数
+# TODO 定义生成相位编码信号的函数
 def generate_phase_encoded_signal(m_sequence, duration, f0, fs):
     t = cp.linspace(0, duration, int(duration * fs), endpoint=False)  # 时间轴
     # 初始化相位编码信号
@@ -82,6 +79,35 @@ subpulse2,  _      = generate_phase_encoded_signal(mseq2,duration,f0,fs)
 subpulse3,  _      = generate_phase_encoded_signal(mseq3,duration,f0,fs)
 pulse = cp.concatenate([subpulse1,subpulse2,subpulse3])
 template_gpu = subpulse1[::-1].copy()  # 匹配滤波模板
+
+# TODO 生成Costas信号
+def generate_costas_signal(fm,fs):
+    t = cp.linspace(0, duration, int(fs * duration))  # 采样频率为1000Hz
+    signal = cp.zeros_like(t)
+    for i in range(len(fm)):
+        signal += cp.sin(2 * np.pi * fm[i] * t)
+    template = signal[::-1]
+    return signal,template
+
+duration = 0.3#信号周期
+fc = 1500
+B = 200
+n=10
+deltaf = B/n #频率步长
+costas1 = cp.asarray([1,6,4,3,9,2,8,7,5,10])
+costas2 = cp.asarray([1,3,6,8,7,2,5,10,4,9])
+costas3 = cp.asarray([1,2,3,10,6,9,5,8,7,4])
+
+fm1 = fc + (costas1-n/2)*deltaf - deltaf/2
+fm2 = fc + (costas2-n/2)*deltaf - deltaf/2
+fm3 = fc + (costas3-n/2)*deltaf - deltaf/2
+
+# 生成三个Costas信号
+subpulse1 , template = generate_costas_signal(fm1, fs)
+subpulse2 ,  _      = generate_costas_signal(fm2, fs)
+subpulse3 ,   _     = generate_costas_signal(fm3, fs)
+template_gpu = subpulse1[::-1].copy()  # 匹配滤波模板
+
 
 
 # 噪声生成函数（GPU）
